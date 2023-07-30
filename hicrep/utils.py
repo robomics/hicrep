@@ -11,66 +11,13 @@ from typing import Union
 from contextlib import suppress
 import numpy as np
 import pandas as pd
-import cooler
-import h5py
+import hictkpy
 import math
 import scipy.sparse as sp
 
-def readMcool(fmcool: str, binSize: int):
-    """Read from a mcool or cool file and return the Cooler object
 
-    Args:
-        fmcool: Input file name
-        binSize: Bin size to select from the mcool file. If this value
-        is <= 0, the input will be treated as a cool file instead
-
-    Returns:
-        cooler.api.Cooler object
-    """
-    mcool = h5py.File(fmcool, 'r')
-    if binSize > 0:
-        return cooler.Cooler(mcool['resolutions'][str(binSize)]), binSize
-    else:
-        cool = cooler.Cooler(mcool)
-        return cool, cool.binsize
-
-
-def cool2pixels(cool: cooler.api.Cooler):
-    """Return the contact matrix in "pixels" format
-
-    Args:
-        cool: Input cooler object
-
-    Returns:
-        cooler.core.RangeSelector2D object
-    """
-    return cool.matrix(as_pixels=True, balance=False, sparse=True)
-
-
-def pixels2Coo(df: pd.DataFrame, bins: pd.DataFrame):
-    """Convert Cooler's contact matrix in "pixels" DataFrame to
-    scipy coo_matrix. The "pixels" format is a 3-column DataFrame:
-    'bin1_id', 'bin2_id', 'counts' for each unique contact
-
-    Args:
-        df: Input DataFrame
-        bins: Cooler bins for the contacts
-
-    Returns:
-        coo_matrix of the input
-    """
-    binOffset = bins.index[0]
-    nBins = bins.shape[0]
-    df['bin1_id'] -= binOffset
-    df['bin2_id'] -= binOffset
-    return sp.coo_matrix((df['count'].to_numpy(),
-                          (df['bin1_id'].to_numpy(), df['bin2_id'].to_numpy())),
-                         shape=(nBins, nBins))
-
-
-def getSubCoo(pixels: cooler.core.RangeSelector2D, bins: cooler.core.RangeSelector1D,
-              regionStr: str):
-    """Fetch a region from Cooler a contact matrix and return it as a
+def getSubCoo(f: hictkpy.cooler.File, regionStr: str):
+    """Fetch a region from a .hic or Cooler contact matrix and return it as a
     coo_matrix
 
     Args:
@@ -81,12 +28,11 @@ def getSubCoo(pixels: cooler.core.RangeSelector2D, bins: cooler.core.RangeSelect
     Returns:
         coo_matrix contact matrix corresponding to the input region
     """
-    mSub = pixels.fetch(regionStr)
+    mSub = f.fetch_sparse(regionStr)
     # Assume Cooler always use upper triangle
-    assert (mSub['bin1_id'] <= mSub['bin2_id']).all(),\
+    assert (mSub.row <= mSub.col).all(),\
         f"Contact matrix of region {regionStr} has lower-triangle entries"
-    binsSub = bins.fetch(regionStr)
-    return pixels2Coo(mSub, binsSub)
+    return mSub
 
 
 def trimDiags(a: sp.coo_matrix, iDiagMax: int, bKeepMain: bool):
@@ -211,7 +157,7 @@ def resample(m: sp.coo_matrix, size: int):
     return ans
 
 
-def coolerInfo(cool: cooler.api.Cooler, k: str):
+def fileInfo(f: hictkpy.File, k: str):
     """Retrieve metadata from Cooler file
 
     The required metadata fields are documented in:
@@ -227,15 +173,15 @@ def coolerInfo(cool: cooler.api.Cooler, k: str):
         k (str): Key of the metadata field
     Returns: Requested metadata
     """
-    if k in cool.info:
-        return cool.info[k]
-    elif k == 'sum':
-        return cool.pixels()['count'][:].sum()
+    if k == 'sum':
+        if f.is_cooler():
+            attrs = hictkpy.cooler.File(f.uri()).attributes()
+            if 'sum' in attrs:
+                return attrs['sum']
+        return f.fetch()['count'].sum()
     elif k == 'nbins':
-        return cool.bins().shape[0]
-    elif k == 'nnz':
-        return cool.pixels().shape[0]
+        return f.nbins()
     elif k == 'nchroms':
-        return cool.chroms().shape[0]
+        return f.nchroms()
     else:
         raise KeyError(f'Unable to retrieve metadata field \'{k}\'')

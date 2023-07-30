@@ -20,11 +20,11 @@ import scipy.sparse as sp
 import math
 import sys
 import warnings
-import cooler
+import hictkpy
 from hicrep.utils import (
-    readMcool, cool2pixels, getSubCoo,
+    getSubCoo,
     trimDiags, meanFilterSparse, varVstran,
-    resample, upperDiagCsr, coolerInfo
+    resample, upperDiagCsr, fileInfo
     )
 
 @deprecated("Use sccByDiag instead")
@@ -91,14 +91,14 @@ def sccByDiag(m1: sp.coo_matrix, m2: sp.coo_matrix, nDiags: int):
     return rhoNan2Zero @ wsNan2Zero / wsNan2Zero.sum()
 
 
-def hicrepSCC(cool1: cooler.api.Cooler, cool2: cooler.api.Cooler,
+def hicrepSCC(f1: hictkpy.File, f2: hictkpy.cooler.File,
               h: int, dBPMax: int, bDownSample: bool,
               chrNames: list = None, excludeChr: set = None):
     """Compute hicrep score between two input Cooler contact matrices
 
     Args:
-        cool1: `cooler.api.Cooler` Input Cooler contact matrix 1
-        cool2: `cooler.api.Cooler` Input Cooler contact matrix 2
+        f1: `cooler.api.Cooler` Input Cooler contact matrix 1
+        f2: `cooler.api.Cooler` Input Cooler contact matrix 2
         h: `int` Half-size of the mean filter used to smooth the
         input matrics
         dBPMax `int` Only include contacts that are at most this genomic
@@ -114,19 +114,17 @@ def hicrepSCC(cool1: cooler.api.Cooler, cool2: cooler.api.Cooler,
     Returns:
         `float` scc scores for each chromosome
     """
-    binSize1 = cool1.binsize
-    binSize2 = cool2.binsize
-    assert binSize1 == binSize2,\
+    assert f1.bin_size() == f2.bin_size(),\
         f"Input cool files have different bin sizes"
-    assert coolerInfo(cool1, 'nbins') == coolerInfo(cool2, 'nbins'),\
+    assert f1.nbins() == f2.nbins(),\
         f"Input cool files have different number of bins"
-    assert coolerInfo(cool1, 'nchroms') == coolerInfo(cool2, 'nchroms'),\
+    assert f1.nchroms() == f2.nchroms(),\
         f"Input cool files have different number of chromosomes"
-    assert (cool1.chroms()[:] == cool2.chroms()[:]).all()[0],\
+    assert f1.chromosomes() == f2.chromosomes(),\
         f"Input file have different chromosome names"
-    binSize = binSize1
-    bins1 = cool1.bins()
-    bins2 = cool2.bins()
+    binSize = f1.bin_size()
+    bins1 = f1.bins()
+    bins2 = f2.bins()
     if binSize is None:
         # sometimes bin size can be None, e.g., input cool file has
         # non-uniform size bins.
@@ -142,20 +140,23 @@ def hicrepSCC(cool1: cooler.api.Cooler, cool2: cooler.api.Cooler,
                       f"to determine maximal diagonal index to include", RuntimeWarning)
     if dBPMax == -1:
         # this is the exclusive upper bound
-        dMax = coolerInfo(cool1, 'nbins')
+        dMax = f1.bins().shape[0]
     else:
         dMax = dBPMax // binSize + 1
     assert dMax > 1, f"Input dBPmax is smaller than binSize"
-    p1 = cool2pixels(cool1)
-    p2 = cool2pixels(cool2)
     # get the total number of contacts as normalizing constant
-    n1 = coolerInfo(cool1, 'sum')
-    n2 = coolerInfo(cool2, 'sum')
+    n1 = fileInfo(f1, 'sum')
+    n2 = fileInfo(f2, 'sum')
     # Use dict here so that the chrNames don't duplicate
     if chrNames is None:
-        chrNamesDict = dict.fromkeys(cool1.chroms()[:]['name'].tolist())
+        chrNamesDict = f1.chromosomes()
     else:
         chrNamesDict = dict.fromkeys(chrNames)
+
+    if "ALL" in chrNamesDict:
+        chrNamesDict.pop("ALL")
+    if "All" in chrNamesDict:
+        chrNamesDict.pop("All")
     # It's important to preserve the order of the input chrNames so that the
     # user knows the order of the output SCC scores so we bail when encounter
     # duplicate names rather than implicit prunning the names.
@@ -169,11 +170,11 @@ def hicrepSCC(cool1: cooler.api.Cooler, cool2: cooler.api.Cooler,
     scc = np.full(len(chrNames), -2.0)
     for iChr, chrName in enumerate(chrNames):
         # normalize by total number of contacts
-        mS1 = getSubCoo(p1, bins1, chrName)
+        mS1 = getSubCoo(f1, chrName)
         assert mS1.size > 0, "Contact matrix 1 of chromosome %s is empty" % (chrName)
         assert mS1.shape[0] == mS1.shape[1],\
             "Contact matrix 1 of chromosome %s is not square" % (chrName)
-        mS2 = getSubCoo(p2, bins2, chrName)
+        mS2 = getSubCoo(f2, chrName)
         assert mS2.size > 0, "Contact matrix 2 of chromosome %s is empty" % (chrName)
         assert mS2.shape[0] == mS2.shape[1],\
             "Contact matrix 2 of chromosome %s is not square" % (chrName)

@@ -38,6 +38,7 @@ setuptools.setup(
         "Deprecated",
         "numpy>=1.17.0",
         "scipy",
+        "hictkpy @ git+https://github.com/paulsengroup/hictk.git",
         "cooler",
         "pandas",
         "h5py",

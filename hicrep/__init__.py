@@ -3,8 +3,9 @@ import numpy as np
 import math
 import sys
 import warnings
+import hictkpy
 from hicrep.utils import (
-    readMcool, cool2pixels, getSubCoo,
+    getSubCoo,
     trimDiags, meanFilterSparse, varVstran,
     resample
     )
@@ -20,16 +21,16 @@ def main(*args):
     np.random.seed(10)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("fmcool1", type=str,
-                        help="First cooler multiple-binsize contact files")
-    parser.add_argument("fmcool2", type=str,
-                        help="Second cooler multiple-binsize contact files")
+    parser.add_argument("file1", type=str,
+                        help="First .hic or .mcool contact file")
+    parser.add_argument("file2", type=str,
+                        help="Second .hic or .mcool contact file")
     parser.add_argument("fout", type=str,
                         help="Output results to this file. Output format would be\
                         one column of scc scores for each chromosome")
-    parser.add_argument("--binSize", type=int, default=-1,
+    parser.add_argument("--binSize", type=int, default=0,
                         help="Use this to select the bin size from the input mcool\
-                        file. Default to -1, meaning that the inputs are treated as\
+                        file. Default to 0, meaning that the inputs are treated as\
                         single-binsize .cool files")
     parser.add_argument("--h", type=int, required=True,
                         help="Smooth the input contact matrices using a 2d mean\
@@ -54,7 +55,7 @@ def main(*args):
                         chromosomes whose names are provided. The output SCC\
                         scores will be ordered as the input chromosome names\
                         here")
-    parser.add_argument("--excludeChr", type=str, nargs='*', default=['M'],
+    parser.add_argument("--excludeChr", type=str, nargs='*', default=['chrM', 'M'],
                         help="Exclude chromosomes from the SCC score calculations.\
                         Mitochondrial chromosomes named \"M\" are excluded by\
                         default. The output SCC scores will be ordered as the\
@@ -63,7 +64,7 @@ def main(*args):
 
     args = parser.parse_args()
 
-    assert not (args.excludeChr != ['M'] and len(args.chrNames) > 0), f"""
+    assert not (args.excludeChr != ['chrM', 'M'] and len(args.chrNames) > 0), f"""
         Please use --chrNames OR --excludeChr arguments but not both.
         """
 
@@ -84,8 +85,6 @@ def main(*args):
             header += "# @rev " + p.sub("\n# @branch ",
                                         gitrev.stdout.read().strip()) + "\n"
 
-    fmcool1 = args.fmcool1
-    fmcool2 = args.fmcool2
     fout = args.fout
     binSize = args.binSize
     h = args.h
@@ -98,10 +97,10 @@ def main(*args):
         warnings.warn(f"""
             Duplicate excludeChr found. Please remove them in --excludeChr""")
 
-    cool1, binSize1 = readMcool(fmcool1, binSize)
-    cool2, binSize2 = readMcool(fmcool2, binSize)
+    file1 = hictkpy.File(args.file1, binSize)
+    file2 = hictkpy.File(args.file2, binSize)
 
-    scc = hicrepSCC(cool1, cool2, h, dBPMax, bDownSample,
+    scc = hicrepSCC(file1, file2, h, dBPMax, bDownSample,
                     chrNames if len(chrNames) > 0 else None,
                     excludeChr if len(excludeChr) > 0 else None)
 
