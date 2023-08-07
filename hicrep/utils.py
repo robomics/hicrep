@@ -16,7 +16,7 @@ import math
 import scipy.sparse as sp
 
 
-def getSubCoo(f: hictkpy.cooler.File, regionStr: str):
+def getSubCoo(f: hictkpy.File, regionStr: str):
     """Fetch a region from a .hic or Cooler contact matrix and return it as a
     coo_matrix
 
@@ -28,7 +28,7 @@ def getSubCoo(f: hictkpy.cooler.File, regionStr: str):
     Returns:
         coo_matrix contact matrix corresponding to the input region
     """
-    mSub = f.fetch_sparse(regionStr)
+    mSub = f.fetch(regionStr).to_coo()
     # Assume Cooler always use upper triangle
     assert (mSub.row <= mSub.col).all(),\
         f"Contact matrix of region {regionStr} has lower-triangle entries"
@@ -174,11 +174,10 @@ def fileInfo(f: hictkpy.File, k: str):
     Returns: Requested metadata
     """
     if k == 'sum':
-        if f.is_cooler():
-            attrs = hictkpy.cooler.File(f.uri()).attributes()
-            if 'sum' in attrs:
-                return attrs['sum']
-        return f.fetch()['count'].sum()
+        attrs = f.attributes()
+        if 'sum' in attrs:
+            return attrs['sum']
+        return f.fetch().sum()
     elif k == 'nbins':
         return f.nbins()
     elif k == 'nchroms':

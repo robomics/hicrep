@@ -91,7 +91,7 @@ def sccByDiag(m1: sp.coo_matrix, m2: sp.coo_matrix, nDiags: int):
     return rhoNan2Zero @ wsNan2Zero / wsNan2Zero.sum()
 
 
-def hicrepSCC(f1: hictkpy.File, f2: hictkpy.cooler.File,
+def hicrepSCC(f1: hictkpy.File, f2: hictkpy.File,
               h: int, dBPMax: int, bDownSample: bool,
               chrNames: list = None, excludeChr: set = None):
     """Compute hicrep score between two input Cooler contact matrices
